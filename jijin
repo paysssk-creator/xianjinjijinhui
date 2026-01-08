@@ -1,0 +1,205 @@
+var MrEmbedGiftList = {
+    iframePath: '',
+    contentHeight: '',
+    iframeElem: null,
+    iframeId: 'myregistry_embeded_iframe',
+    scriptContainer: '#script_myregistry_giftlist_iframe',
+    initialize: function () {
+        var scriptElement = document.getElementById('script_myregistry_giftlist_iframe');
+        var scriptSrc = scriptElement ? scriptElement.getAttribute('src') : null;
+        if (scriptSrc) {
+            var fullUrl = new URL(scriptSrc, window.location.origin);
+            let registryId = fullUrl.searchParams.get("r");
+            var hostname = fullUrl.origin;
+            MrEmbedGiftList.iframePath =hostname + "/giftlist-embed/" + registryId + "/";
+        }
+        MrEmbedGiftList.setEmbededElement();
+    },
+    
+    setEmbededElement: function () {
+        MrEmbedGiftList.createIframe();
+    },
+    
+    setAttributes: function (el, attrs) {
+        for (var key in attrs) {
+            if ((key === 'styles' || key === 'style') && typeof attrs[key] === 'object') {
+                for (var prop in attrs[key]) { el.style[prop] = attrs[key][prop]; }
+            } else if (key === 'html') {
+                el.innerHTML = attrs[key];
+            } else {
+                el.setAttribute(key, attrs[key]);
+            }
+        }
+    },
+    createIframe: function () {
+        MrEmbedGiftList.iframeElem = document.createElement("iframe");
+        MrEmbedGiftList.setAttributes(MrEmbedGiftList.iframeElem, {
+            id: MrEmbedGiftList.iframeId,
+            src: MrEmbedGiftList.iframePath,
+            frameBorder: "0",
+            style: {
+                width: '100%',
+                height: MrEmbedGiftList.contentHeight,
+                display: 'block'
+            }
+        });
+
+        var onMessageReceived = function (event) {
+            if (event) {
+                try {
+
+                    var message = event.data;
+                    if (message) {
+                        message = JSON.parse(message);
+                    }
+                    if (typeof message.method != 'undefined') {
+
+                        switch (message.method) {
+                            case "resize":
+                                MrEmbedGiftList.resize(message.params.width, message.params.height);
+                                break;
+
+                            case "onGiftListResize":
+                                MrEmbedGiftList.onGiftListResize(message.params.height);
+                                break;
+
+                            default:
+                                MrEmbedGiftList.showPopup(message.method, message.path, message.params, message.html, function () { MrEmbedGiftList.centerPopup(); });
+                                break;
+                        }
+                    }
+                } catch (e) {
+                }
+            }
+        };
+       
+        MrEmbedGiftList.iframeElem.onload = function () {
+            MrEmbedGiftList.addWinEvent("message", onMessageReceived);
+            window.dispatchEvent(new Event('resize'));
+
+            var el = MrEmbedGiftList.iframeElem;
+            el.contentWindow.postMessage(JSON.stringify({ method: "getCurrentDocumentSize", params: '' }), el.src);
+
+        };
+        var scriptElement = document.getElementById(MrEmbedGiftList.scriptContainer.replace('#', ''));
+        
+        if (scriptElement) {
+            if (scriptElement.parentNode) {
+                scriptElement.parentNode.appendChild(MrEmbedGiftList.iframeElem);
+            }
+        }
+    },
+    addWinEvent: function (event, listener) {
+        if (window.addEventListener) {
+            addEventListener(event, listener, false);
+        } else {
+            attachEvent("on" + event, listener);
+        }
+    },
+    resize: function (width, height) {
+        var iframe = document.getElementById('script_myregistry_giftlist_iframe').parentNode.querySelectorAll('iframe')[0];
+        if (iframe) {
+            iframe.style.height = height + 'px';
+            iframe.style.width = width + 'px';
+        }
+    },
+    onGiftListResize: function (height) {
+        var iframe = document.getElementById('script_myregistry_giftlist_iframe').parentNode.querySelectorAll('iframe')[0];
+        if (iframe) {
+            iframe.style.height = height + 'px';
+        }
+    },
+    showPopup: function (id, page, params, html, openCallback, closeCallback, beforeCloseCallback, leftPosition, topPosition, isModalClose) {
+
+        openCallback = openCallback || function () { };
+        closeCallback = closeCallback || function () {
+            document.getElementById(id)?.remove();
+        };
+        isModalClose = isModalClose === undefined ? true : isModalClose;
+
+        // Create the popup container
+        var container = document.createElement('div');
+        container.id = id;
+        container.style.width = '560px';
+        container.style.height = '300px';
+        container.innerHTML = html;
+
+        // Append the container to the body
+        document.body.appendChild(container);
+
+        // Add styles for modal background
+        var modalOverlay = document.createElement('div');
+        modalOverlay.style.position = 'fixed';
+        modalOverlay.style.top = '0';
+        modalOverlay.style.left = '0';
+        modalOverlay.style.width = '100%';
+        modalOverlay.style.height = '100%';
+        modalOverlay.style.backgroundColor = '#464646';
+        modalOverlay.style.opacity = '0.5';
+        modalOverlay.style.zIndex = '9998';
+        if (isModalClose) {
+            modalOverlay.addEventListener('click', function () {
+                closeCallback.call(container);
+                document.body.removeChild(modalOverlay);
+            });
+        }
+        document.body.appendChild(modalOverlay);
+
+        // Style and position the popup
+        container.style.position = 'absolute';
+        container.style.zIndex = '9999';
+        container.style.top = topPosition !== null ? `${topPosition}px` : 'auto';
+        container.style.left = leftPosition !== null ? `${leftPosition}px` : 'auto';
+        container.style.margin = 'auto';
+
+        // Open callback
+        openCallback.call(container);
+
+        // Detect click outside to close
+        function detectClickOut(event) {
+            if (!container.contains(event.target)) {
+                closePopup();
+            }
+        }
+
+        // Close popup logic
+        function closePopup() {
+            if (beforeCloseCallback) beforeCloseCallback.call(container);
+            closeCallback.call(container);
+            document.removeEventListener('mouseup', detectClickOut);
+            document.body.removeChild(container);
+            document.body.removeChild(modalOverlay);
+        }
+
+        // Add close button functionality
+        var closeButton = container.querySelector('.b-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', closePopup);
+        }
+
+        // Add event listener for outside clicks
+        document.addEventListener('mouseup', detectClickOut);
+    },
+
+    centerPopup: function (topPosition) {
+        setTimeout(function () {
+            var dialog = document.querySelector(".mrw_dialogpanel.v2");
+            if (dialog) {
+                dialog.style.position = "fixed";
+
+                // Calculate top position
+                if (window.innerHeight - dialog.offsetHeight > 0) {
+                    var topPos = typeof topPosition !== "undefined" ? topPosition : (window.innerHeight - dialog.offsetHeight) / 2;
+                    dialog.style.top = topPos + "px";
+                }
+
+                // Calculate left position
+                if (window.innerWidth - dialog.offsetWidth > 0) {
+                    var leftPos = (window.innerWidth - dialog.offsetWidth) / 2;
+                    dialog.style.left = leftPos + "px";
+                }
+            }
+        }, 100);
+
+    },
+};
